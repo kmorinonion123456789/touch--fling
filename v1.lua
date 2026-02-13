@@ -1,94 +1,139 @@
--- Universal TP Touch Fling (All Players)
+-- Universal TP Touch Fling (Custom Target Mode)
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local lp = Players.LocalPlayer
 
--- GUIの作成 (既存のものを流用・拡張)
+-- GUIの作成
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "FlingGui_shiun"
+ScreenGui.Name = "CustomFling_" .. lp.Name
 ScreenGui.Parent = lp:WaitForChild("PlayerGui")
 ScreenGui.ResetOnSpawn = false
 
 local Frame = Instance.new("Frame")
-Frame.Size = UDim2.new(0, 200, 0, 100)
-Frame.Position = UDim2.new(0.5, -100, 0.5, -50)
-Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+Frame.Size = UDim2.new(0, 220, 0, 180)
+Frame.Position = UDim2.new(0.5, -110, 0.5, -90)
+Frame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 Frame.Active = true
 Frame.Draggable = true
 Frame.Parent = ScreenGui
 
+-- タイトル
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0.2, 0)
+Title.Text = "FLING CONTROL"
+Title.TextColor3 = Color3.new(1, 1, 1)
+Title.BackgroundTransparency = 1
+Title.Parent = Frame
+
+-- モード切替ボタン (ALL / SINGLE)
+local ModeBtn = Instance.new("TextButton")
+ModeBtn.Size = UDim2.new(0.9, 0, 0.2, 0)
+ModeBtn.Position = UDim2.new(0.05, 0, 0.25, 0)
+ModeBtn.Text = "MODE: ALL PLAYERS"
+ModeBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+ModeBtn.TextColor3 = Color3.new(1, 1, 1)
+ModeBtn.Parent = Frame
+
+-- ターゲット入力欄 (名前の一部を入力)
+local TargetInput = Instance.new("TextBox")
+TargetInput.Size = UDim2.new(0.9, 0, 0.2, 0)
+TargetInput.Position = UDim2.new(0.05, 0, 0.5, 0)
+TargetInput.PlaceholderText = "Target Name (Partial)"
+TargetInput.Text = ""
+TargetInput.Visible = false -- 初期状態(ALL)では非表示
+TargetInput.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+TargetInput.TextColor3 = Color3.new(1, 1, 1)
+TargetInput.Parent = Frame
+
+-- メインON/OFFボタン
 local ToggleBtn = Instance.new("TextButton")
-ToggleBtn.Size = UDim2.new(0.9, 0, 0.4, 0)
-ToggleBtn.Position = UDim2.new(0.05, 0, 0.1, 0)
-ToggleBtn.Text = "TP FLING: OFF"
+ToggleBtn.Size = UDim2.new(0.9, 0, 0.2, 0)
+ToggleBtn.Position = UDim2.new(0.05, 0, 0.75, 0)
+ToggleBtn.Text = "FLING: OFF"
 ToggleBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
 ToggleBtn.TextColor3 = Color3.new(1, 1, 1)
 ToggleBtn.Parent = Frame
 
-local StatusLabel = Instance.new("TextLabel")
-StatusLabel.Size = UDim2.new(0.9, 0, 0.3, 0)
-StatusLabel.Position = UDim2.new(0.05, 0, 0.6, 0)
-StatusLabel.Text = "Targeting: All Players"
-StatusLabel.BackgroundTransparency = 1
-StatusLabel.TextColor3 = Color3.new(1, 1, 1)
-StatusLabel.Parent = Frame
-
--- メインロジック
+--- 設定変数 ---
 local flicking = false
-local flingPower = 50000 -- 相手を飛ばすパワー
+local mode = "ALL" -- "ALL" か "SINGLE"
+local flingPower = 50000 
+local targetWaitTime = 0.5 
 
-ToggleBtn.MouseButton1Click:Connect(function()
-    flicking = not flicking
-    if flicking then
-        ToggleBtn.Text = "TP FLING: ON"
-        ToggleBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
+-- モード切替処理
+ModeBtn.MouseButton1Click:Connect(function()
+    if mode == "ALL" then
+        mode = "SINGLE"
+        ModeBtn.Text = "MODE: SINGLE TARGET"
+        TargetInput.Visible = true
     else
-        ToggleBtn.Text = "TP FLING: OFF"
-        ToggleBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
+        mode = "ALL"
+        ModeBtn.Text = "MODE: ALL PLAYERS"
+        TargetInput.Visible = false
     end
 end)
 
--- Fling実行ループ
-RunService.Stepped:Connect(function()
-    if not flicking then return end
-    
-    local char = lp.Character
-    local hrp = char and char:FindFirstChild("HumanoidRootPart")
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    
-    if not hrp then return end
+-- ON/OFF切替
+ToggleBtn.MouseButton1Click:Connect(function()
+    flicking = not flicking
+    ToggleBtn.Text = flicking and "FLING: ON" or "FLING: OFF"
+    ToggleBtn.BackgroundColor3 = flicking and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(150, 0, 0)
+end)
 
-    -- 椅子に座っている場合の対策（一瞬だけ立ち上がる、または溶接を無視する）
-    if hum and hum.Sit then
-        hum.Sit = false 
-    end
-
-    -- 全プレイヤーをループ
+-- ターゲット検索関数
+local function getTarget()
+    local text = TargetInput.Text:lower()
+    if text == "" then return nil end
     for _, v in pairs(Players:GetPlayers()) do
-        if v ~= lp and v.Character and v.Character:FindFirstChild("HumanoidRootPart") then
-            local targetHrp = v.Character.HumanoidRootPart
-            
-            -- 1. 相手の場所にテレポート
-            -- 相手の少し上や横に重なるように移動
-            hrp.CFrame = targetHrp.CFrame * CFrame.new(0, 0, 0.5) 
-            
-            -- 2. 超高速回転と速度を付与して「飛ばす」判定を作る
-            hrp.Velocity = Vector3.new(flingPower, flingPower, flingPower)
-            hrp.RotVelocity = Vector3.new(flingPower, flingPower, flingPower)
-            
-            -- 3. 物理演算の「重なり」を強制（これがないと飛ばない）
-            task.wait(0.01)
+        if v ~= lp and (v.Name:lower():find(text) or v.DisplayName:lower():find(text)) then
+            return v
+        end
+    end
+    return nil
+end
+
+-- メインループ
+task.spawn(function()
+    while true do
+        task.wait()
+        if not flicking then continue end
+
+        local char = lp.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if not hrp then continue end
+
+        if mode == "ALL" then
+            -- 全員を順番に狙う
+            for _, v in pairs(Players:GetPlayers()) do
+                if not flicking or mode ~= "ALL" then break end
+                if v ~= lp and v.Character and v.Character:FindFirstChild("HumanoidRootPart") then
+                    local targetHrp = v.Character.HumanoidRootPart
+                    local start = tick()
+                    while tick() - start < targetWaitTime and flicking do
+                        hrp.CFrame = targetHrp.CFrame * CFrame.new(0, 0, 0.1)
+                        hrp.Velocity = Vector3.new(flingPower, flingPower, flingPower)
+                        RunService.Heartbeat:Wait()
+                    end
+                end
+            end
+        elseif mode == "SINGLE" then
+            -- 特定のプレイヤーを狙い続ける（リスキル）
+            local target = getTarget()
+            if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+                local targetHrp = target.Character.HumanoidRootPart
+                hrp.CFrame = targetHrp.CFrame * CFrame.new(0, 0, 0.1)
+                hrp.Velocity = Vector3.new(flingPower, flingPower, flingPower)
+            end
         end
     end
 end)
 
--- 自分が飛ばされないための対策（アンチ・セルフフリング）
-RunService.RenderStepped:Connect(function()
-    if flicking then
-        local char = lp.Character
-        for _, part in pairs(char:GetDescendants()) do
+-- 衝突判定の無効化
+RunService.Stepped:Connect(function()
+    if flicking and lp.Character then
+        for _, part in pairs(lp.Character:GetDescendants()) do
             if part:IsA("BasePart") then
-                part.CanCollide = false -- 自分自身の衝突判定を消してバグを防ぐ
+                part.CanCollide = false
             end
         end
     end
