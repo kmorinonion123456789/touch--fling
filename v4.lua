@@ -69,7 +69,7 @@ local flicking = false
 local spinning = false
 local targetPlayer = nil
 local flingPower = 50000 
-local spinSpeed = 70
+local spinSpeed = 150
 
 local function updateList()
     for _, child in pairs(ScrollingFrame:GetChildren()) do
